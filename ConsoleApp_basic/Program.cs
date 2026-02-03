@@ -2,28 +2,63 @@
 
 class Program
 {
-    class Person
+    class MyMethod
     {
-        // 成员变量
-        public string _name;
-        public int _age;
-        // 静态变量
-        public static int maxAge=120;
+        //成员（实例）方法
+        // public void Greet()
+        // {
+        //     Console.WriteLine("Hello World!");
+        // }
+        
+        public void Greet()=> Console.WriteLine("Hello World!");
+       
+        //静态方法
+        // public static void Greet2()
+        // {
+        //     Console.WriteLine("Hello World too!");
+        // }
+        //
+        public static void Greet2() => Console.WriteLine("Hello World too!");
+       
+
+        /*
+         * 加密方法
+         */
+        // public static int Encrypt(int x)
+        // {
+        //     return x * 2 + 4;
+        // }
+        //
+        public static int Encrypt(int x)=>x * 2 + 4;
+
+        /*
+         * 解密方法
+         */
+        // public static int Decrypt(int x)
+        // {
+        //     return (x - 4) / 2;
+        // }
+        public static int Decrypt(int x)=>(x - 4) / 2;
+
     }
+    
+    
     static void Main()
     {
-        Person allice=new Person();
-        allice._name = "Allice";
-        allice._age = 20;
-        Console.WriteLine($"allice name is {allice._name}, age is {allice._age}");
+        // 使用成员（实例）方法
+        MyMethod m = new MyMethod();
+        m.Greet();
         
-        Person bob = new Person();
-        bob._name = "Bob";
-        bob._age = 30;
-
-        Console.WriteLine($"bob name is {bob._name}, age is {bob._age} ");
-        // 访问静态变量
-        Console.WriteLine($"the max age of person is {Person.maxAge}");
+        // 使用静态方法
+        MyMethod.Greet2();
         
+        // 加密一个数字
+        int number = 100;
+        int result=MyMethod.Encrypt(number);
+        Console.WriteLine($"加密后的数字是{result}");
+        
+        // 解密一个数字
+        int result2 = MyMethod.Decrypt(result);
+        Console.WriteLine($"解密后的数字是{result2}");
     }
 }

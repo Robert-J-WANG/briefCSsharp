@@ -4,26 +4,43 @@ class Program
 {
     static void Main()
     {
-        try
+        int[] numbers = { 1, 2, 3, 4, 5 };
+
+        // // for loop
+        // for (int i = 0; i < numbers.Length; i++)
+        // {
+        //     Console.WriteLine(numbers[i]);
+        // }
+        //
+        // //foreach loop
+        // foreach (int number in numbers)
+        // {
+        //     Console.WriteLine(number);
+        // }
+        //
+        // // while loop
+        // int time = 0;
+        // while (time < numbers.Length)
+        // {
+        //     Console.WriteLine(numbers[time]);
+        //     time++;
+        // }
+        //
+        // //do while loop
+        // do
+        // {
+        //     Console.WriteLine("hello world");
+        //     time++;
+        // } while (numbers.Length > 0);
+
+        foreach (var number in numbers)
         {
-            int[] arr = { 1, 2, 3 };
-            Console.WriteLine(arr[3]);
+            Console.WriteLine(number);
+            break;
+            // continue;
+            // return;
         }
-        catch (IndexOutOfRangeException e)
-        {
-            Console.WriteLine(e.Message);
-        }
-        catch (FormatException e)
-        {
-            Console.WriteLine(e.Message);
-        }
-        catch (OverflowException e)
-        {
-            Console.WriteLine(e.Message);
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine("Exception");
-        }
+
+        Console.WriteLine("hello world");
     }
 }

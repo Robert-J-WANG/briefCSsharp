@@ -1,67 +1,70 @@
-﻿using System.Globalization;
-
-namespace ConsoleApp_basic;
+﻿namespace ConsoleApp_basic;
 
 class Program
 {
-    static int Add(int a) => a + 1;
-    static int Add(int a, int b) => a + b;
-    static double Add(int a, double b) =>a+b;
-    
-    
-    
-    // static void Add(int a, int b)=>Console.WriteLine(a + b);
-    // static int Add(int a, int b=1) => a + b;
-    
-    static void Print(int a)=> Console.WriteLine(a);
-
-    static void Change(ref int a, in int b)
+    class Person
     {
-        a++;
-        // b++; // 报错，只读不能改
+        /*
+         * 字段
+         */
+        // public string _name;
+        // public int _age;
+
+        /*
+         * 属性
+         */
+        // private string _name;
+        // private int _age;
+        //
+        // public string Name
+        // {
+        //     get => _name;
+        //     set => _name = string.IsNullOrEmpty(value) ? "unknown" : value;
+        // }
+        //
+        // public int Age
+        // {
+        //     get => _age;
+        //     set => _age = value < 0 ? 0 : value;
+        // }
         
-    }
+        /*
+         * 自动属性
+         */
+        // public string Name { get; private set; }
+        
+        // 初始化器
+        public string Name { get; init; }
+        public int Age { get; }
 
-    static void UnChange(int a, int b)
-    {
-        a++;
-        b++;
-    }
-
-    static bool IsEqual(ref int num, out int copy)
-    {
-        copy = num;
-        num++;
-        return copy == num ? true : false;
-
-    }
-
-    static int AddMore(int a, params int [] nums)
-    {
-        int r = a;
-        foreach (var n in nums)
+        // public void SetName(string name)
+        // {
+        //     Name = string.IsNullOrWhiteSpace(name) ? "Unknown" : name;
+        // }
+        
+        /*
+         * 构造器
+         */
+        public Person(string name, int age)
         {
-            r += n;
+            Name = string.IsNullOrWhiteSpace(name) ? "Unknown" : name;
+            Age = age < 0 ? 0 : age;
         }
-        return r;
+        
     }
 
     static void Main()
     {
-        Console.WriteLine(Add(1, 2));
-        Console.WriteLine(Add(1));
-        Console.WriteLine(Add(b:2,a:3));
-        Console.WriteLine(AddMore(1, 2,3,4,5));
+        Person p = new Person("Tom",-99)
+        {
+            Name = "Jerry"
+        };
+        // p.Name = "Jerry"; // 不能重新赋值
+        // 只能通过方法修改
+        // p.SetName("Jerry");
 
-        int a = 1;
-        int b = 2;
-        UnChange(a,b);
-        Console.WriteLine($"a:{a}, b:{b}");
-        Change(ref a, b);
-        Console.WriteLine($"a:{a}, b:{b}");
-
-        int num = -1;
-        bool result= IsEqual(ref num, out int copy);
-        Console.WriteLine($"result:{result}, num:{num}, copy:{copy}");
+        
+        // p.Age = 99; // Age只读
+        Console.WriteLine($"Name is {p.Name}, and {p.Age} years old.");
     }
 }

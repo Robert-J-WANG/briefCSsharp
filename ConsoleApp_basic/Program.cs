@@ -2,69 +2,74 @@
 
 class Program
 {
-    class Person
+
+    /*
+     * 统一处理支付的方法
+     */
+    static void PayAll(IEnumerable<IPayable> payables)
     {
-        /*
-         * 字段
-         */
-        // public string _name;
-        // public int _age;
-
-        /*
-         * 属性
-         */
-        // private string _name;
-        // private int _age;
-        //
-        // public string Name
-        // {
-        //     get => _name;
-        //     set => _name = string.IsNullOrEmpty(value) ? "unknown" : value;
-        // }
-        //
-        // public int Age
-        // {
-        //     get => _age;
-        //     set => _age = value < 0 ? 0 : value;
-        // }
-        
-        /*
-         * 自动属性
-         */
-        // public string Name { get; private set; }
-        
-        // 初始化器
-        public string Name { get; init; }
-        public int Age { get; }
-
-        // public void SetName(string name)
-        // {
-        //     Name = string.IsNullOrWhiteSpace(name) ? "Unknown" : name;
-        // }
-        
-        /*
-         * 构造器
-         */
-        public Person(string name, int age)
-        {
-            Name = string.IsNullOrWhiteSpace(name) ? "Unknown" : name;
-            Age = age < 0 ? 0 : age;
-        }
-        
+        foreach (var p in payables)
+            p.Pay();
     }
 
     static void Main()
     {
-        Person p = new Person("Tom",-99)
+        // var order = new Order();
+        // order.Amount = -100; // // 金额非法
+        // order.Status = "?????"; // 状态可能乱改
+
+        // var order = new Order(100);
+        //  Console.WriteLine($"the amount of the order is {order.Amount}, the status is {order.Status}");
+        //  order.Pay();
+        //  Console.WriteLine($"the status is {order.Status}");
+
+        // 继承
+        // var onlineOrder = new OnlineOrder(100);
+        // onlineOrder.Pay();
+        // Console.WriteLine($"the amount of the onlineOrder is {order.Amount}, the status is {order.Status}");
+        //
+        // var storeOrder = new StoreOrder(200);
+        // storeOrder.Pay();
+        // Console.WriteLine($"the amount of the storeOrder is {order.Amount}, the status is {order.Status}");
+
+        // 多态的实现
+        // List<Order> orders = new()
+        // {
+        //     new OnlineOrder(100),
+        //     new StoreOrder(200)
+        // };
+        //
+        // foreach (var order in orders)
+        // {
+        //     order.Pay(); // 这里调用的是子类各自的 Pay()
+        // }
+        
+        // 接口的使用场景
+        
+        // var payables = new List<IPayable>()
+        // {
+        //     new OnlineOrder(200),
+        //     new StoreOrder(300),
+        //     new Invoice("123456", 9999)
+        // };
+        // PayAll(payables);
+        
+        // 使用组合+外部依赖
+        var fakePaymentGateway = new FakePaymentGateway();
+
+        var pays = new List<IPayable>()
         {
-            Name = "Jerry"
+            // 继承+接口+依赖注入
+            new OnlineOrder(111, fakePaymentGateway),
+            // 继承+接口
+            new StoreOrder(222),
+            // 接口
+            new Invoice("no_123456",333)
         };
-        // p.Name = "Jerry"; // 不能重新赋值
-        // 只能通过方法修改
-        // p.SetName("Jerry");
+        
+        PayAll(pays);
 
         
-        // p.Age = 99; // Age只读
-        Console.WriteLine($"Name is {p.Name}, and {p.Age} years old.");
+
     }
 }

@@ -2,7 +2,6 @@
 
 class Program
 {
-
     /*
      * 统一处理支付的方法
      */
@@ -12,64 +11,91 @@ class Program
             p.Pay();
     }
 
+
+    // static void LogPaid(Order order)
+    // {
+    //     Console.WriteLine($"[Log] Order paid, amount={order.Amount}");
+    // }
+    //
+    // static void SendEmail(Order order)
+    // {
+    //     Console.WriteLine($"[SendEmail] Order paid, amount={order.Amount}");
+    // }
+    //
+    // static void ReduceStock(Order order)
+    // {
+    //     Console.WriteLine($"[ReduceStock] Order paid, amount={order.Amount}");
+    // }
+
+
+
     static void Main()
     {
-        // var order = new Order();
-        // order.Amount = -100; // // 金额非法
-        // order.Status = "?????"; // 状态可能乱改
-
-        // var order = new Order(100);
-        //  Console.WriteLine($"the amount of the order is {order.Amount}, the status is {order.Status}");
-        //  order.Pay();
-        //  Console.WriteLine($"the status is {order.Status}");
-
-        // 继承
-        // var onlineOrder = new OnlineOrder(100);
-        // onlineOrder.Pay();
-        // Console.WriteLine($"the amount of the onlineOrder is {order.Amount}, the status is {order.Status}");
-        //
-        // var storeOrder = new StoreOrder(200);
-        // storeOrder.Pay();
-        // Console.WriteLine($"the amount of the storeOrder is {order.Amount}, the status is {order.Status}");
-
-        // 多态的实现
-        // List<Order> orders = new()
-        // {
-        //     new OnlineOrder(100),
-        //     new StoreOrder(200)
-        // };
-        //
-        // foreach (var order in orders)
-        // {
-        //     order.Pay(); // 这里调用的是子类各自的 Pay()
-        // }
-        
-        // 接口的使用场景
-        
-        // var payables = new List<IPayable>()
-        // {
-        //     new OnlineOrder(200),
-        //     new StoreOrder(300),
-        //     new Invoice("123456", 9999)
-        // };
-        // PayAll(payables);
-        
         // 使用组合+外部依赖
         var fakePaymentGateway = new FakePaymentGateway();
 
-        var pays = new List<IPayable>()
-        {
-            // 继承+接口+依赖注入
-            new OnlineOrder(111, fakePaymentGateway),
-            // 继承+接口
-            new StoreOrder(222),
-            // 接口
-            new Invoice("no_123456",333)
-        };
-        
-        PayAll(pays);
+        var onlineOrder = new OnlineOrder(123456, fakePaymentGateway);
 
-        
 
+        // 赋值 - 事件无法直接赋值
+        // onlineOrder.OnSuccess = (order)=>Console.WriteLine($"[Log] Order paid, amount={order.Amount}");
+        
+        // 订阅 - 追加
+        onlineOrder.OnSuccess += (order)=>Console.WriteLine($"[SendEmail] Order paid, amount={order.Amount}");
+        onlineOrder.OnSuccess += (order)=>Console.WriteLine($"[ReduceStock] Order paid, amount={order.Amount}");
+        // 取消 - 移除
+        onlineOrder.OnSuccess -= (order)=>Console.WriteLine($"[Log] Order paid, amount={order.Amount}");
+        
+        // 事件无法直接清空
+        // onlineOrder.OnSuccess = null; 
+
+        onlineOrder.Pay();
+        
+        /*
+        // 赋值 - 挂载委托回调
+        onlineOrder.OnSuccess = (order)=>Console.WriteLine($"[Log] Order paid, amount={order.Amount}");
+        
+        // 订阅 - 追加
+        onlineOrder.OnSuccess += (order)=>Console.WriteLine($"[SendEmail] Order paid, amount={order.Amount}");
+        onlineOrder.OnSuccess += (order)=>Console.WriteLine($"[ReduceStock] Order paid, amount={order.Amount}");
+        // 取消 - 移除
+        onlineOrder.OnSuccess -= (order)=>Console.WriteLine($"[Log] Order paid, amount={order.Amount}");
+
+        onlineOrder.Pay();
+        */
+
+
+        /*
+        // 赋值 - 挂载委托回调
+        onlineOrder.OnSuccess = LogPaid;
+        // 订阅 - 追加
+        onlineOrder.OnSuccess += SendEmail;
+        onlineOrder.OnSuccess+=ReduceStock;
+        // 取消 - 移除
+        onlineOrder.OnSuccess -= LogPaid;
+
+        onlineOrder.Pay();
+        */
+
+
+        // onlineOrder.SetSuccessHandler(LogPaid);
+        // onlineOrder.AddSuccessHandler(SendEmail);
+        // onlineOrder.AddSuccessHandler(ReduceStock);
+        // onlineOrder.RemoveSuccessHandler(LogPaid);
+        // onlineOrder.ClearSuccessHandler();
+        // onlineOrder.Pay();
+
+
+        // var pays = new List<IPayable>()
+        // {
+        //     // 继承+接口+依赖注入
+        //     new OnlineOrder(111, fakePaymentGateway),
+        //     // 继承+接口
+        //     new StoreOrder(222),
+        //     // 接口
+        //     new Invoice("no_123456",333)
+        // };
+        //
+        // PayAll(pays);
     }
 }

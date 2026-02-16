@@ -8,14 +8,21 @@ public class OnlineOrder : Order
         _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
     }
     
+   
+    
     // 重写Pay()
     public override void Pay()
     {
+        // 继承父类
         EnsureCanPay();
         // Console.WriteLine($"[Online] Calling payment gateway, amount={_amount}");
         // 外部依赖的变化点，交给 gateway 处理
         _gateway.Charge(_amount);
         _status = OrderStatus.Paid;
         
+        //继承父类
+        HandlePaymentSucceeded();
     }
+    
 }
+

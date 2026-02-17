@@ -1,4 +1,6 @@
-﻿namespace ConsoleApp_basic;
+﻿using System.Globalization;
+
+namespace ConsoleApp_basic;
 
 class Program
 {
@@ -28,7 +30,6 @@ class Program
     // }
 
 
-
     static void Main()
     {
         // 使用组合+外部依赖
@@ -36,25 +37,36 @@ class Program
 
         var onlineOrder = new OnlineOrder(123456, fakePaymentGateway);
 
+        // onlineOrder.AddDefaultSuccessHandlers();
+        // onlineOrder.AddLogHandlers().SendEmailHandlers().ReduceStockHandlers().Pay();
 
+        // onlineOrder.AddSuccessHandlers(o => Console.WriteLine($"[Log] Order paid, amount={o.Amount}"))
+        //     .AddSuccessHandlers(o => Console.WriteLine($"[SendEmail] Order paid, amount={o.Amount}"))
+        //     .AddSuccessHandlers(o => Console.WriteLine($"[ReduceStock] Order paid, amount={o.Amount}")).Pay();
+
+        onlineOrder.AddSuccessHandlers(o => Console.WriteLine($"[Log] Order paid, amount={o.Amount}")).PayNow()
+            .PayAfter(o => Console.WriteLine($"[AfterPay] Status is now {o.Status}"));
+
+        /*
         // 赋值 - 事件无法直接赋值
         // onlineOrder.OnSuccess = (order)=>Console.WriteLine($"[Log] Order paid, amount={order.Amount}");
-        
+
         // 订阅 - 追加
         onlineOrder.OnSuccess += (order)=>Console.WriteLine($"[SendEmail] Order paid, amount={order.Amount}");
         onlineOrder.OnSuccess += (order)=>Console.WriteLine($"[ReduceStock] Order paid, amount={order.Amount}");
         // 取消 - 移除
         onlineOrder.OnSuccess -= (order)=>Console.WriteLine($"[Log] Order paid, amount={order.Amount}");
-        
+
         // 事件无法直接清空
-        // onlineOrder.OnSuccess = null; 
+        // onlineOrder.OnSuccess = null;
 
         onlineOrder.Pay();
-        
+        */
+
         /*
         // 赋值 - 挂载委托回调
         onlineOrder.OnSuccess = (order)=>Console.WriteLine($"[Log] Order paid, amount={order.Amount}");
-        
+
         // 订阅 - 追加
         onlineOrder.OnSuccess += (order)=>Console.WriteLine($"[SendEmail] Order paid, amount={order.Amount}");
         onlineOrder.OnSuccess += (order)=>Console.WriteLine($"[ReduceStock] Order paid, amount={order.Amount}");

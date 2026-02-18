@@ -2352,3 +2352,559 @@ class Program
     
 
 ### 16. 泛型（Generics）→ 泛型约束（Constraints）
+
+#### 1. 什么问题？
+
+我们已经有订单类型：
+
+- 抽象 `Order`
+- `OnlineOrder`, `StoreOrder`
+
+现在很自然会有**“数据存取”**的需求：
+
+- 保存订单
+- 获取全部
+
+因此，为order类创建一个仓库OrderRepository， 用来执行上面的业务操作
+
+```c#
+public class OrderRepository
+{
+    private readonly List<Order> _orders;
+    public void Add(Order order) => _orders.Add(order);
+    public List<Order> GetAll() => new List<Order>(_orders);
+}
+```
+
+执行上面的业务操作
+
+```c#
+class Program
+{
+    static void Main()
+    {
+
+        var fakePaymentGateway = new FakePaymentGateway();
+
+        var repo = new OrderRepository();
+
+        repo.Add(new OnlineOrder(123, fakePaymentGateway));
+        repo.Add(new StoreOrder(456).PayNow());
+
+        var orders = repo.GetAll();
+        foreach (var o in orders)
+        {
+            Console.WriteLine($"order Id: {o.Id}, Amount: {o.Amount}, Status: {o.Status}");
+        }
+    }
+}
+```
+
+**这样写有什么问题？**
+
+现在老板说：除了订单，还要存：
+
+- `Invoice`（发票）
+- `Customer`（客户）
+- `Product`（商品）
+
+你会发现你要写：
+
+- `InvoiceRepository`
+- `CustomerRepository`
+- `ProductRepository`
+
+而它们的 CRUD 结构几乎一样，**会大量重复代码**。 因此使用泛型可以解决。
+
+#### 2. 泛型
+
+泛型的核心思想是**“推迟声明”**：在编写代码时不指定具体类型（用 `T` 代替），直到代码被实际调用时再决定它是 `int`、`string` 还是 `Order`。让同一套代码适用于多种类型，同时保持类型安全。
+
+所有涉及到具体类型的地方，都可以使用泛型。 C# 中常见的泛型家族成员：
+
+- 泛型类 (Generic Classes)
+- 泛型接口 (Generic Interfaces)
+- 泛型接口 (Generic Interfaces)
+- 泛型委托 (Generic Delegates)
+
+每个泛型家族成员，都内置了常用的泛型结构，比如经典的 `List<T>`, `IEnumerable<T>`, `Action<T>等等`
+
+
+
+#### 3. 泛型类
+
+这是最常见的**容器型**泛型。它定义了一个可以装载任何类型的“模版结构”。
+
+内置的泛型类几乎都在 `System.Collections.Generic` 命名空间下。它们解决了各种数据的存储问题。
+
+- **`List<T>`**: 最常用的**动态数组**。
+- **`Dictionary<TKey, TValue>`**: **键值对集合**（哈希表），查找速度极快。
+- **`Queue<T>` / `Stack<T>`**: **队列**（先进先出）和**栈**（后进先出）。
+- **`Task<T>`**: **异步任务**的返回值包装，在 `async/await` 编程中随处可见。
+
+**示例：** `List<string> names = new List<string>();` 这里的 `List` 就是内置泛型类。
+
+也可以自定义泛型类，由于对不同类型数据的再组装。
+
+比如改写我们上面的 `OrderRepository`类，为一个泛型类 `Repository`可以存取任何类型
+
+```c#
+public class Repository<T>
+{
+    private readonly List<T> _items =[]; // 使用内置泛型 List<T>
+    
+    public void  Add(T item) => _items.Add(item);
+    public List<T> GetAll() => [.._items];
+}
+```
+
+使用的时候可以传递具体的类型
+
+```c#
+using System.ComponentModel;
+using System.Globalization;
+
+namespace ConsoleApp_basic;
+
+class Program
+{
+    static void Main()
+    {
+        // 使用组合+外部依赖
+        var fakePaymentGateway = new FakePaymentGateway();
+
+        // 存储Order
+        var orderRepo = new Repository<Order>();
+        orderRepo.Add(new OnlineOrder(123,fakePaymentGateway));
+        orderRepo.Add(new StoreOrder(456).PayNow());
+        var orders=orderRepo.GetAll();
+        foreach (var order in orders)
+        {
+            Console.WriteLine($"order Amount: {order?.Amount}, Status: {order?.Status}");
+        }
+        
+        // 也可以存储其他类型： 比如Invoice
+        var invoiceRepo = new Repository<Invoice>();
+        invoiceRepo.Add(new Invoice("abc-123",2000));
+        invoiceRepo.Add(new Invoice("efg-345",4000));
+        var invoices=invoiceRepo.GetAll();
+        foreach (var invoice in invoices)
+        {
+            Console.WriteLine($"invoice N0: {invoice.InvoiceNo} Amount: {invoice?.Amount}, Status: {invoice?.IsPaid}");
+        }
+    }
+}
+```
+
+```bash
+order Amount: 123, Status: Created
+order Amount: 456, Status: Paid
+
+invoice N0: abc-123 Amount: 2000, Status: False
+invoice N0: efg-345 Amount: 4000, Status: False
+```
+
+**这一步解决了什么？**
+
+- 写一次 `Repository<T>`，就能存 `Order`、存 `Invoice`、存任何类型。
+- 这就是泛型类最直观的价值。
+
+**还有什么问题？**
+
+现在只有一个 `Repository<T>` 类。
+
+如果将来想换实现（内存版 / 文件版 / 数据库版），希望上层代码不改。
+
+这就需要接口：**仓储应该提供哪些能力**。
+
+#### 4. 泛型接口
+
+定义了一套**不限制具体类型**的行为规范。
+
+内置接口定义了对象之间交互的“协议”。
+
+- **`IEnumerable<T>`**: **可迭代接口**。这是 LINQ 的基石，所有的集合（List, Array 等）都实现了它。
+- **`ICollection<T>`**: 定义了集合的基本操作（添加、删除、计数）。
+- **`IComparable<T>`**: 定义了**比较逻辑**。如果你想让你的对象能排序，就得实现它。
+- **`IDictionary<TKey, TValue>`**: 定义了字典类应该具备的所有功能。
+
+我们可以自定义一个泛型接口，来约束一套能力（行为），比如
+
+```c#
+public interface IRepository<T>
+{
+    void Add(T item);
+    List<T> GetAll();
+}
+```
+
+以后任何类型如果需要这种接口所具备的能力，都可以使用这个接口来约束。
+
+给我们的泛型`Repository<T>`赋能
+
+```c#
+public class Repository<T>: IRepository<T>
+{
+    private readonly List<T> _items =[];
+    
+    public void  Add(T item) => _items.Add(item);
+
+    public List<T> GetAll() => [.._items];
+}
+```
+
+**这一步解决了什么？**
+
+- 业务层可以依赖 `IRepository<Order>`，以后换成数据库仓储也不用改业务层。
+
+#### 5. 泛型方法 
+
+类本身可能不是泛型的，但某个**动作（功能）**可以处理多种类型。因此，把这种功能也可以抽象成泛型方法。
+
+比如，做 Web API 时，很常见的流程是：
+
+> 从仓储取 `Order` → 转成返回模型 DTO → 返回给前端
+
+如果不用泛型方法，会写很多“针对不同类型的 map 方法”。
+
+我们专门写一个泛型方法 Map<TSource, TResult>， 来映射不限类型的方法。 写之前，需要一个DTO模型的类。
+
+> **DTO模型 :**
+>
+> DTO 的意思是**数据传输对象(Data Transfer Object)**。 它们被用作从服务返回的对象，以避免暴露领域实体。 例如，如果你有一个名为User 的类，其中包含一个Password 属性，你不想从你的API 返回这个数据，所以你可以创建一个UserDTO，它没有这个属性，并从你的API 安全地返回它。
+
+定义DTO模型类 OrderDto
+
+```c#
+public class OrderDto
+{
+    public decimal Amount { get; set; }
+    public OrderStatus Status { get; set; }
+    public string Type { get; set; } = "";
+}
+```
+
+先定义一个方法（可以变成扩展方法）来映射Order数据
+
+```c#
+public static class Mapper
+{
+    public static OrderDto Map(this Order order)
+    {
+        if (order == null) throw new ArgumentNullException(nameof(order));
+        
+        return new OrderDto()
+        {
+            Amount = order.Amount,
+            Status = order.Status,
+            Type = order.GetType().Name,
+        };
+    }
+}
+```
+
+使用
+
+```c#
+class Program
+{
+    static void Main()
+    {
+        var order = new StoreOrder(123);
+        var orderDto= order.Map();
+        Console.WriteLine($"{orderDto.Type} - {orderDto.Amount} - {orderDto.Status}");
+    }
+}
+```
+
+但是映射的逻辑写死在内部了，使用委托，把逻辑交给外部使用者
+
+```c#
+public static class Mapper
+{
+    public static OrderDto Map(this Order order, Func<Order, OrderDto> mapper)
+    {
+        if (mapper == null) throw new ArgumentNullException(nameof(order));
+        return mapper(order); // 委托回调
+    }
+}
+```
+
+```c#
+class Program
+{
+    static void Main()
+    {
+        var order = new StoreOrder(123);
+        var orderDto= order.Map(o => new OrderDto()
+        {
+            Amount = o.Amount,
+            Status = o.Status,
+            Type = o.GetType().Name
+        });
+        Console.WriteLine($"{orderDto.Type} - {orderDto.Amount} - {orderDto.Status}");
+    }
+}
+```
+
+现在的类型是写死的，只适用于Order, 改成泛型， 变成一个可扩展的泛型方法
+
+```c#
+public static class Mapper
+{
+    public static TResult Map<TResult,TSource>(this TSource source, Func<TSource, TResult> mapper)
+    {
+        if (mapper == null) throw new ArgumentNullException(nameof(mapper));
+        return mapper(source);
+    }
+}
+```
+
+使用此泛型方法
+
+```c#
+class Program
+{
+    static void Main()
+    {
+        var order = new StoreOrder(123);
+        var orderDto = order.Map(o => new OrderDto()
+        {
+            Amount = o.Amount,
+            Status = o.Status,
+            Type = o.GetType().Name
+        });
+
+        Console.WriteLine($"{orderDto.Type} - {orderDto.Amount} - {orderDto.Status}");
+
+        // 不限类型使用，使用委托回调，自定义逻辑
+        int[] arr = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        var result = arr.Map(a =>
+        {
+            string str = "";
+            foreach (var i in a)
+            {
+                str += i;
+            }
+
+            return str;
+        });
+
+        Console.WriteLine(result);
+    }
+}
+```
+
+```bash
+StoreOrder - 123 - Created
+12345678910
+```
+
+
+
+#### 6. 泛型委托
+
+这是“函数的模版”，它规定了函数应该长什么样，但不规定处理什么数据。
+
+- 内置委托 - 为了让不用每次都手动写 `delegate` 关键字，官方直接给了你三个万能模板：
+    - **`Action<T1, T2, ...>`**: **无返回值**的函数。最多支持 16 个参数。 *用途：* 打印日志、修改状态、执行动作。
+    - **`Func<T1, ..., TResult>`**: **有返回值**的函数。最后一个泛型参数永远是返回值类型。*用途：* 计算数值、转换对象、LINQ 的 `Select`。
+    - **`Predicate<T>`**: 返回值为 `bool` 的函数（相当于 `Func<T, bool>`）。*用途：* 过滤条件、判断是否存在。
+
+上面的示例中： lambda 本质上是在创建一个委托实例，而 Action/Func 就是泛型委托类型
+
+
+
+#### 7. 泛型约束
+
+**什么问题？**
+
+现在，我们使用的泛型接口或者类型太自由了，没有约束力。比如我们有个新的需求：
+
+- 使用id查询 GetById( ) 的功能
+
+如果想在 `IRepository<T>` 里加：
+
+```c#
+T? GetById(int id);
+```
+
+但是**不是所有 T 都有 Id**。比如现有 `Order` 类目前也没有 `Id` 属性，所以我们不能“假装它有”。
+
+这就是“泛型自由度太大”的典型矛盾：
+
+- 想写通用代码
+- 又需要 T 具备某种能力
+
+👉 正解：**用接口表达能力，再用 where 约束保证能力存在**。
+
+也就是说，把这个格外需要的能力，封装成一个接口，需要时，配合where加上这个约束。
+
+先定义能力接口：IHasId。 不修改原有的结构
+
+```c#
+public interface IHasId
+{
+    int Id { get; }
+}
+```
+
+原有的Order类补上Id的功能 - 使用partial关键字
+
+```c#
+public abstract partial class Order : IHasId
+{
+    private static int _nextId = 1;
+    public int Id { get; } = _nextId++;
+}
+```
+
+扩展 IRepository：where T : IHasId
+
+```c#
+public interface IRepository<T> where T : IHasId
+{
+    void Add(T item);
+    List<T> GetAll();
+    T? GetById(int id);
+}
+```
+
+`Repository<T>` 实现 GetById（现在可以安全访问 x.Id）
+
+```c#
+public class Repository<T>: IRepository<T>  where T: IHasId
+{
+    private readonly List<T> _items =[];
+    
+    public void  Add(T item) => _items.Add(item);
+
+    public List<T> GetAll() => [.._items];
+    
+    public T? GetById(int id) => _items.Find(x => x.Id == id);
+}
+```
+
+```c#
+using System.ComponentModel;
+using System.Globalization;
+
+namespace ConsoleApp_basic;
+
+class Program
+{
+    static void Main()
+    {
+        var fakePaymentGateway = new FakePaymentGateway();
+        
+        var nRepo = new Repository<Order>();
+        nRepo.Add(new OnlineOrder(999, fakePaymentGateway));
+        nRepo.Add(new OnlineOrder(888, fakePaymentGateway));
+        var res=nRepo.GetById(1);
+        Console.WriteLine($"{res?.Id} - {res?.Amount} - {res?.Status}");
+    }
+}
+```
+
+**这一节得到什么？**
+
+- `where T : IHasId` 让编译器保证：T 一定有 `Id`
+- 你的通用仓储可以写 `x.Id`，不会报错
+
+#### 8. 泛型结构体
+
+用于轻量级、高性能的**值类型**包装。
+
+`GetById` 返回 `T?` 只能表达“有/没有”，但无法携带错误原因。真实 Web API 常常需要：
+
+- 找不到：NotFound
+- 参数不合法：BadRequest
+- 等等
+
+我们用一个泛型结构体 `Result<T>` 表达：
+
+- `IsSuccess`
+- `Value`
+- `Error`
+
+```c#
+public readonly struct Result<T>
+{
+    public bool IsSuccess { get; }
+    public T? Value { get; }
+    public string? Error { get; }
+
+    private Result(bool isSuccess, T? value, string? error)
+    {
+        IsSuccess = isSuccess;
+        Value = value;
+        Error = error;
+    }
+
+    public static Result<T> Success(T value) => new Result<T>(true, value, null);
+    public static Result<T> Fail(string error) => new Result<T>(false, default, error);
+}
+```
+
+让仓储用 Result<T> 返回（更贴近 API）
+
+```c#
+public interface IRepository<T> where T : IHasId
+{
+    void Add(T item);
+    List<T> GetAll();
+    Result<T> GetById(int id);
+}
+```
+
+```c#
+public class Repository<T> : IRepository<T> where T : IHasId
+{
+    private readonly List<T> _items = new();
+
+    public void Add(T item) => _items.Add(item);
+    public List<T> GetAll() => new List<T>(_items);
+
+    public Result<T> GetById(int id)
+    {
+        var found = _items.Find(x => x.Id == id);
+        return found is null ? Result<T>.Fail("Not found") : Result<T>.Success(found);
+    }
+}
+```
+
+```c#
+class Program
+{
+    static void Main()
+    {
+
+        var fakePaymentGateway = new FakePaymentGateway();
+              
+        var nRepo = new Repository<Order>();
+        nRepo.Add(new OnlineOrder(999, fakePaymentGateway));
+        nRepo.Add(new OnlineOrder(888, fakePaymentGateway));
+        
+        var res=nRepo.GetById(1);
+        Console.WriteLine(res.IsSuccess);
+        Console.WriteLine(res.Value.Amount);
+        
+    }
+}
+```
+
+
+
+#### 9. 小结
+
+**泛型类**：Repository<T>`（一次实现，多类型复用）
+
+**泛型接口**：`IRepository<T>`（抽象规则，便于替换实现）
+
+**泛型约束**：`where T : IHasId`（保证 T 有 Id，才能写 GetById）
+
+**泛型结构体**：`Result<T>`（表达成功/失败 + 携带值/错误）
+
+**泛型方法**：`Map<TSource, TResult>`（实体→OrderDto，API 输出）
+
+**泛型委托**：`Func<>/Action<>`（事件/lambda里大量使用）

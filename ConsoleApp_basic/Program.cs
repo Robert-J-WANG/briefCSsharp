@@ -1,113 +1,90 @@
-﻿using System.Globalization;
+﻿using System.ComponentModel;
+using System.Globalization;
 
 namespace ConsoleApp_basic;
 
 class Program
 {
-    /*
-     * 统一处理支付的方法
-     */
-    static void PayAll(IEnumerable<IPayable> payables)
-    {
-        foreach (var p in payables)
-            p.Pay();
-    }
-
-
-    // static void LogPaid(Order order)
-    // {
-    //     Console.WriteLine($"[Log] Order paid, amount={order.Amount}");
-    // }
-    //
-    // static void SendEmail(Order order)
-    // {
-    //     Console.WriteLine($"[SendEmail] Order paid, amount={order.Amount}");
-    // }
-    //
-    // static void ReduceStock(Order order)
-    // {
-    //     Console.WriteLine($"[ReduceStock] Order paid, amount={order.Amount}");
-    // }
-
-
     static void Main()
     {
         // 使用组合+外部依赖
         var fakePaymentGateway = new FakePaymentGateway();
+        
+       
+        var nRepo = new Repository<Order>();
+        nRepo.Add(new OnlineOrder(999, fakePaymentGateway));
+        nRepo.Add(new OnlineOrder(888, fakePaymentGateway));
+        var res=nRepo.GetById(1);
+        Console.WriteLine(res.IsSuccess);
+        Console.WriteLine(res.Value?.Amount);
+        
 
-        var onlineOrder = new OnlineOrder(123456, fakePaymentGateway);
+        var order = new StoreOrder(123);
+        var orderDto = order.Map(o => new OrderDto()
+        {
+            Amount = o.Amount,
+            Status = o.Status,
+            Type = o.GetType().Name
+        });
 
-        // onlineOrder.AddDefaultSuccessHandlers();
-        // onlineOrder.AddLogHandlers().SendEmailHandlers().ReduceStockHandlers().Pay();
+        Console.WriteLine($"{orderDto.Type} - {orderDto.Amount} - {orderDto.Status}");
 
-        // onlineOrder.AddSuccessHandlers(o => Console.WriteLine($"[Log] Order paid, amount={o.Amount}"))
-        //     .AddSuccessHandlers(o => Console.WriteLine($"[SendEmail] Order paid, amount={o.Amount}"))
-        //     .AddSuccessHandlers(o => Console.WriteLine($"[ReduceStock] Order paid, amount={o.Amount}")).Pay();
+        // 不限类型使用，使用委托回调，自定义逻辑
+        int[] arr = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        var result = arr.Map(a =>
+        {
+            string str = "";
+            foreach (var i in a)
+            {
+                str += i;
+            }
 
-        onlineOrder.AddSuccessHandlers(o => Console.WriteLine($"[Log] Order paid, amount={o.Amount}")).PayNow()
-            .PayAfter(o => Console.WriteLine($"[AfterPay] Status is now {o.Status}"));
+            return str;
+        });
+
+        Console.WriteLine(result);
+
+
+        // var order = new StoreOrder(123);
+        // var orderDto= order.Map();
+        // Console.WriteLine($"{orderDto.Type} - {orderDto.Amount} - {orderDto.Status}");
 
         /*
-        // 赋值 - 事件无法直接赋值
-        // onlineOrder.OnSuccess = (order)=>Console.WriteLine($"[Log] Order paid, amount={order.Amount}");
+        // 存储Order
+        var orderRepo = new Repository<Order>();
+        orderRepo.Add(new OnlineOrder(123,fakePaymentGateway));
+        orderRepo.Add(new StoreOrder(456).PayNow());
+        var orders=orderRepo.GetAll();
+        foreach (var order in orders)
+        {
+            Console.WriteLine($"order Amount: {order?.Amount}, Status: {order?.Status}");
+        }
 
-        // 订阅 - 追加
-        onlineOrder.OnSuccess += (order)=>Console.WriteLine($"[SendEmail] Order paid, amount={order.Amount}");
-        onlineOrder.OnSuccess += (order)=>Console.WriteLine($"[ReduceStock] Order paid, amount={order.Amount}");
-        // 取消 - 移除
-        onlineOrder.OnSuccess -= (order)=>Console.WriteLine($"[Log] Order paid, amount={order.Amount}");
-
-        // 事件无法直接清空
-        // onlineOrder.OnSuccess = null;
-
-        onlineOrder.Pay();
+        // 也可以存储其他类型： 比如Invoice
+        var invoiceRepo = new Repository<Invoice>();
+        invoiceRepo.Add(new Invoice("abc-123",2000));
+        invoiceRepo.Add(new Invoice("efg-345",4000));
+        var invoices=invoiceRepo.GetAll();
+        foreach (var invoice in invoices)
+        {
+            Console.WriteLine($"invoice N0: {invoice.InvoiceNo} Amount: {invoice?.Amount}, Status: {invoice?.IsPaid}");
+        }
         */
 
         /*
-        // 赋值 - 挂载委托回调
-        onlineOrder.OnSuccess = (order)=>Console.WriteLine($"[Log] Order paid, amount={order.Amount}");
+        var repo = new OrderRepository();
 
-        // 订阅 - 追加
-        onlineOrder.OnSuccess += (order)=>Console.WriteLine($"[SendEmail] Order paid, amount={order.Amount}");
-        onlineOrder.OnSuccess += (order)=>Console.WriteLine($"[ReduceStock] Order paid, amount={order.Amount}");
-        // 取消 - 移除
-        onlineOrder.OnSuccess -= (order)=>Console.WriteLine($"[Log] Order paid, amount={order.Amount}");
+        repo.Add(new OnlineOrder(123, fakePaymentGateway));
+        repo.Add(new StoreOrder(456).PayNow());
 
-        onlineOrder.Pay();
+        var order = repo.GetById(1);
+        Console.WriteLine($"my order Id: {order?.Id}, Amount: {order?.Amount}, Status: {order?.Status}");
+
+        var orders = repo.GetAll();
+        foreach (var o in orders)
+        {
+            Console.WriteLine($"order Id: {o.Id}, Amount: {o.Amount}, Status: {o.Status}");
+        }
         */
-
-
-        /*
-        // 赋值 - 挂载委托回调
-        onlineOrder.OnSuccess = LogPaid;
-        // 订阅 - 追加
-        onlineOrder.OnSuccess += SendEmail;
-        onlineOrder.OnSuccess+=ReduceStock;
-        // 取消 - 移除
-        onlineOrder.OnSuccess -= LogPaid;
-
-        onlineOrder.Pay();
-        */
-
-
-        // onlineOrder.SetSuccessHandler(LogPaid);
-        // onlineOrder.AddSuccessHandler(SendEmail);
-        // onlineOrder.AddSuccessHandler(ReduceStock);
-        // onlineOrder.RemoveSuccessHandler(LogPaid);
-        // onlineOrder.ClearSuccessHandler();
-        // onlineOrder.Pay();
-
-
-        // var pays = new List<IPayable>()
-        // {
-        //     // 继承+接口+依赖注入
-        //     new OnlineOrder(111, fakePaymentGateway),
-        //     // 继承+接口
-        //     new StoreOrder(222),
-        //     // 接口
-        //     new Invoice("no_123456",333)
-        // };
-        //
-        // PayAll(pays);
     }
 }

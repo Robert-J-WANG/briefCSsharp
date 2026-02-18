@@ -6,10 +6,16 @@ public enum OrderStatus
     Paid = 1
 } 
 
-
-public abstract class Order: IPayable
+public abstract partial class Order : IHasId
 {
- 
+    private static int _nextId = 1;
+    public int Id { get; } = _nextId++;
+}
+
+
+public abstract partial class Order: IPayable
+{
+    
     
     // 子类需要用到，所以 protected
     protected decimal _amount;
@@ -24,7 +30,6 @@ public abstract class Order: IPayable
         {
             throw new ArgumentException("Amount must be greater than 0.", nameof(amount));
         }
-
         _amount = amount;
         _status = OrderStatus.Created;
     }
@@ -47,10 +52,7 @@ public abstract class Order: IPayable
     protected void HandlePaymentSucceeded()
     {
         // 3. 触发委托（注意：基础阶段要判断是否为 null）
-        if (OnSuccess != null) 
-        {
-            OnSuccess(this);
-        }
+        OnSuccess?.Invoke(this);
     }
 
 }

@@ -2908,3 +2908,198 @@ class Program
 **泛型方法**：`Map<TSource, TResult>`（实体→OrderDto，API 输出）
 
 **泛型委托**：`Func<>/Action<>`（事件/lambda里大量使用）
+
+
+
+### 17. Task / async / await（异步）
+
+#### 1. **什么问题？**
+
+在 Web API 中，耗时通常不是 CPU 计算，而是 **IO 等待**：
+
+- 数据库查询
+- HTTP 请求第三方服务
+- 读写文件
+
+使用同步方法，遇到 IO 等待时，任务会傻等占着线程。一旦变成“慢查询”，调用处就会被卡住。
+
+比如下面：我们先写一个“同步”的慢查询：用 `Thread.Sleep(3000)` 模拟 3 秒数据库延迟。
+
+```c#
+public class SlowSyncRepository<T>:IRepository<T> where T: IHasId
+{
+    private readonly List<T> _items= [];
+    
+    public void Add(T item)
+    {
+        // 模拟慢 IO：阻塞线程 3 秒
+        Thread.Sleep(3000);
+        _items.Add(item);
+    }
+
+    public List<T> GetAll()
+    {
+        // 模拟慢 IO：阻塞线程 3 秒
+        Thread.Sleep(3000);
+        return _items;
+    }
+    
+    public Result<T> GetById(int id)
+    {
+        // 模拟慢 IO：阻塞线程 3 秒
+        Thread.Sleep(3000);
+        var found = _items.Find(x => x.Id == id);
+        return found is null ? Result<T>.Fail("Not found") : Result<T>.Success(found);
+    }
+}
+```
+
+使用这些同步方法
+
+```c#
+class Program
+{
+    static void Main()
+    {
+        var slowRepo = new SlowSyncRepository<Order>();
+        slowRepo.Add(new StoreOrder(123456)); // 这里线程被卡住 3 秒
+        Console.WriteLine("3秒之后执行");
+        
+        var orders = slowRepo.GetAll(); // 这里线程被卡住 3 秒
+        Console.WriteLine("3秒之后执行");
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Amount);
+        }
+
+        var result = slowRepo.GetById(1); // 这里线程被卡住 3 秒
+        Console.WriteLine("3秒之后执行");
+        Console.WriteLine(result.Value?.Status);
+    }
+}
+```
+
+**问题是什么？**
+
+- 使用这些同步方法期间，线程完全被阻塞（Sleep/IO 等待）
+- 在 Web API 里，这会让线程池压力变大、并发能力下降
+
+因此，我们要把“等待”变成异步等待， 而方法标识成异步方法。
+
+#### 2. 异步 async / await
+
+异步的理解：遇到 IO 等待时，不要傻等占着线程，而是“挂起等待”，等结果回来再继续。
+
+通俗理解就是：代码运行层面，要等待。而线程运行方面，不等，释放此线程去执行其他任务。
+
+**异步能提升并发处理能力**，尤其是 Web 服务。
+
+**如何实现异步？**
+
+使用3个关键字标识：
+
+- 异步的任务使用await等结果
+- 想在方法里用 `await`，方法必须标记 `async`
+- 方法返回类型通常是 `Task` 或 `Task<T>`
+
+Task 是什么：代表“未来会完成的一件事”。类似于js中的Promise。
+
+- `Task`：表示一个将来完成的操作（无返回值）
+
+- `Task<T>`：表示将来完成并产生一个 `T` 结果的操作 ，是一个泛型类
+
+    
+
+#### 3. 异步方法的使用
+
+先改造新的repository接口：
+
+- 方法名通常加 `Async`（约定俗成，便于阅读）
+- 类型是Task/ Task<T>
+
+```c#
+public interface IAsyncRepository<T>
+{
+    Task AddAsync(T item);
+    Task<List<T?>> GetAllAsync();
+    Task<Result<T?>> GetByIdAsync(int id);
+}
+```
+
+接下来如何写异步repository呢？？
+
+- 方法名标记 `async`
+- 异步任务标记`await`
+
+```c#
+public class AsyncRepository<T>: IAsyncRepository<T>  where T: IHasId
+{
+    private readonly List<T> _items =[];
+    
+    public async Task  AddAsync (T item)
+    {
+        // 模拟 IO 延迟（比如写数据库）
+        await Task.Delay(3000);
+        _items.Add(item);
+    }
+
+    public async Task<List<T?>> GetAllAsync()
+    {
+        // 模拟 IO 延迟（比如写数据库）
+        await Task.Delay(3000);
+        return  [.._items];
+    }
+    
+    public async Task<Result<T?>> GetByIdAsync(int id)
+    {
+        // 模拟 IO 延迟（比如写数据库）
+        await Task.Delay(3000);
+        var found = _items.Find(x => x.Id == id);
+        return found is null ? Result<T?>.Fail("Not found") : Result<T?>.Success(found);
+    }
+}
+```
+
+实现异步任务操作 
+
+- 最外层的main函数也要实现异步（逐层传递）, 一路 async 到顶 
+- main函数也要改成 Task 类型 
+
+```c#
+using System.ComponentModel;
+using System.Globalization;
+
+namespace ConsoleApp_basic;
+
+class Program
+{
+    static async Task Main()
+    { 
+        var asyncRepo = new AsyncRepository<Order>();
+        
+        await asyncRepo.AddAsync(new StoreOrder(123456)); // 异步方法，等3秒执行后面的，但线程不卡
+        Console.WriteLine("3秒之后执行");
+        
+        var orders = await asyncRepo.GetAllAsync(); // 异步方法，等3秒执行后面的，但线程不卡
+        Console.WriteLine("3秒之后执行");
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o?.Amount);
+        }
+        
+        var result =await asyncRepo.GetByIdAsync(1); // 异步方法，等3秒执行后面的，但线程不卡
+        Console.WriteLine("3秒之后执行");
+        Console.WriteLine(result.Value?.Status);
+
+    }
+}
+```
+
+注意：如果忘记写await, 拿到的结果是Task类型，而不是T类型
+
+#### 4. 小结
+
+- `Task`/`Task<T>`：代表未来完成的操作/未来的结果
+- `async`：允许方法内使用 `await`
+- `await`：异步等待结果，不阻塞线程（尤其适合 IO）
+- Web API 常见模式：仓储/服务方法 `Async`，一路 `await` 到 endpoint

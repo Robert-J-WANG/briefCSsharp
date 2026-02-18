@@ -5,20 +5,53 @@ namespace ConsoleApp_basic;
 
 class Program
 {
-    static void Main()
+    static async Task Main()
     {
         // 使用组合+外部依赖
         var fakePaymentGateway = new FakePaymentGateway();
         
-       
+        var asyncRepo = new AsyncRepository<Order>();
+        await asyncRepo.AddAsync(new StoreOrder(123456)); // 异步方法，等3秒执行后面的，但线程不卡
+        Console.WriteLine("3秒之后执行");
+        
+        var orders = await asyncRepo.GetAllAsync(); // 异步方法，等3秒执行后面的，但线程不卡
+        Console.WriteLine("3秒之后执行");
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o?.Amount);
+        }
+        
+        var result =await asyncRepo.GetByIdAsync(1); // 异步方法，等3秒执行后面的，但线程不卡
+        Console.WriteLine("3秒之后执行");
+        Console.WriteLine(result.Value?.Status);
+
+        /*
+        var slowRepo = new SlowSyncRepository<Order>();
+        slowRepo.Add(new StoreOrder(123456)); // 同步方法，卡3秒之后后面的
+        Console.WriteLine("3秒之后执行");
+        
+        var orders = slowRepo.GetAll(); // 同步方法，卡3秒之后后面的
+        Console.WriteLine("3秒之后执行");
+        foreach (var o in orders)
+        {
+            Console.WriteLine(o.Amount);
+        }
+
+        var result = slowRepo.GetById(1); // 同步方法，卡3秒之后后面的
+        Console.WriteLine("3秒之后执行");
+        Console.WriteLine(result.Value?.Status);
+        */
+
+        /*
         var nRepo = new Repository<Order>();
         nRepo.Add(new OnlineOrder(999, fakePaymentGateway));
         nRepo.Add(new OnlineOrder(888, fakePaymentGateway));
         var res=nRepo.GetById(1);
         Console.WriteLine(res.IsSuccess);
         Console.WriteLine(res.Value?.Amount);
-        
+        */
 
+        /*
         var order = new StoreOrder(123);
         var orderDto = order.Map(o => new OrderDto()
         {
@@ -48,6 +81,7 @@ class Program
         // var order = new StoreOrder(123);
         // var orderDto= order.Map();
         // Console.WriteLine($"{orderDto.Type} - {orderDto.Amount} - {orderDto.Status}");
+        */
 
         /*
         // 存储Order

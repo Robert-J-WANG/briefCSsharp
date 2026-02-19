@@ -3099,7 +3099,457 @@ class Program
 
 #### 4. 小结
 
-- `Task`/`Task<T>`：代表未来完成的操作/未来的结果
-- `async`：允许方法内使用 `await`
-- `await`：异步等待结果，不阻塞线程（尤其适合 IO）
+- `Task`/`Task<T>`：代表未来完成的操作/未来的结果，一个可等待的类型
+- `async`：仅仅标识，方法内将使用 `await`
+- `await`：真正发生异步的地方，异步等待结果，不阻塞线程（尤其适合 IO）
 - Web API 常见模式：仓储/服务方法 `Async`，一路 `await` 到 endpoint
+
+
+
+### 18. LINQ
+
+#### 1. 什么问题？
+
+我们需要对订单集合的具体数据进行操作，比如循环查询，筛选，排序等等，目前的代码结构下操作，集合处理会很啰嗦。
+
+比如，循环过滤已支付订单并取金额
+
+```c#
+class Program
+{
+    static void Main()
+    {
+        var fakePaymentGateway = new FakePaymentGateway();
+
+        var orders = new List<Order>()
+        {
+            new OnlineOrder(123, fakePaymentGateway),
+            new StoreOrder(456),
+            new OnlineOrder(789, fakePaymentGateway),
+        };
+
+        // 支付2个订单
+        orders[0].Pay();
+        orders[1].Pay();
+
+        // 过滤筛选已经支付的订单金额
+        var payAmounts = new List<decimal>();
+        foreach (var o in orders)
+        {
+            if (o.Status == OrderStatus.Paid)
+            {
+                payAmounts.Add(o.Amount);
+            }
+        }
+
+        // 循环打印出已经支付的金额
+        Console.WriteLine("Paid amounts:");
+        foreach (var amount in payAmounts)
+        {
+            Console.WriteLine(amount);
+        }
+    }
+}
+```
+
+**问题是什么？**
+
+- 逻辑分散：过滤+取值+收集写了很多行
+- 很难“链式表达意图”
+- 组合多个条件/映射会更长
+
+因此，我们需要把这些常见操作变成“可组合的扩展方法”。这就是LINQ
+
+#### 2. 什么是LINQ？
+
+LINQ（Language Integrated Query） 本质上就是：内置的**一堆对 `IEnumerable<T>` 的扩展方法**，而这些扩展方法的参数通常是 **委托（lambda）**，并且全是 **泛型**。
+
+LINQ（Language Integrated Query）让你用统一方式对集合做：
+
+- 过滤（Where）
+- 投影/映射（Select）
+- 排序（OrderBy）
+- 聚合/判断（Any/All/Count/Sum）
+
+学习LINQ，能够真正读懂并写出类似下面这种“框架风格”的代码：
+
+```c#
+orders.Where(o => o.Status == Paid).Select(o => o.Amount).ToList();
+```
+
+#### 3. Where（过滤）/  Select（投影/映射）
+
+`Where` 接收一个条件函数（委托），返回满足条件的序列：
+
+```c#
+orders.Where(o => o.Status == Paid)
+```
+
+这里的 `o => ...` 就是 lambda（第14章）
+
+`Select` 把每个元素映射成另一个形态：
+
+```c#
+orders.Select(o => o.Amount)
+```
+
+用 LINQ 改写 **'循环过滤已支付订单并取金额'**的逻辑
+
+**注意：** 
+
+- LINQ 需要 `using System.Linq;`
+- LINQ 经常需要 `.ToList()` / `.ToArray()`。
+
+```c#
+class Program
+{
+    static void Main()
+    {
+    	...
+
+        // 过滤筛选已经支付的订单金额    
+        // ✅ LINQ：Where + Select + ToList
+        var payAmounts = orders.Where(o => o.Status == OrderStatus.Paid).Select(o => o.Amount).ToList();
+
+        // 循环打印出已经支付的金额
+        Console.WriteLine("Paid amounts:");
+        foreach (var amount in payAmounts)
+        {
+            Console.WriteLine(amount);
+        }
+    }
+}
+```
+
+**为什么 Where/Select 之后还要 ToList()？**
+
+LINQ 很多操作是对 `IEnumerable<T>` 的**延迟执行**（lazy evaluation）：
+
+- `Where` / `Select` 只是“描述规则”
+- 固定结果，就用 ToList() 把结果立刻算出来
+- 真正遍历时（foreach、ToList、Count 等）才执行。
+
+#### 4. LINQ 其他常用操作
+
+- Any / All：判断是否存在/是否全部满足
+
+    ```c#
+    bool anyPaid = orders.Any(o => o.Status == OrderStatus.Paid);
+    bool allPaid = orders.All(o => o.Status == OrderStatus.Paid);
+    ```
+
+- FirstOrDefault：取第一个匹配项（可能为 null）
+
+    ```c#
+    var firstPaid = orders.FirstOrDefault(o => o.Status == OrderStatus.Paid);
+    ```
+
+- OrderBy：排序
+
+    ```c#
+    var sorted = orders.OrderBy(o => o.Amount).ToList();
+    ```
+
+- GroupBy：按类型分组（Online/Store）
+
+    ```c#
+    var groups = orders.GroupBy(o => o.GetType().Name);
+    ```
+
+#### 5. LINQ 综合练习：像 Web API 一样处理数据
+
+在 Web API 里，通常不会直接返回“领域对象/实体”（Order 可能有很多内部信息）。
+
+更常见做法是：**映射成一个“返回模型”**（DTO 思想），只给前端需要的字段。
+
+我们之前已经定义过返回模型OrderDto
+
+```c#
+public class OrderDto
+{
+    public int Id { get; set; }
+    public decimal Amount { get; set; }
+    public OrderStatus Status { get; set; }
+    public string Type { get; set; } = "";
+}
+```
+
+**第一步：准备数据（订单列表，含不同类型和状态）**
+
+```c#
+class Program
+{
+    static void Main()
+    {
+        var fakePaymentGateway = new FakePaymentGateway();
+        
+        //创建订单列表
+        var orders = new List<Order>()
+        {
+            new OnlineOrder(2234132, fakePaymentGateway),
+            new StoreOrder(54624),
+            new OnlineOrder(754523, fakePaymentGateway),
+            new StoreOrder(3141),
+            new StoreOrder(625342353),
+            new StoreOrder(2314454),
+            new OnlineOrder(7245, fakePaymentGateway),
+            new OnlineOrder(1653735, fakePaymentGateway),
+        };
+
+        // 支付2个订单
+        orders[0].Pay();
+        orders[2].Pay();
+        orders[3].Pay();
+        orders[5].Pay();
+        orders[6].Pay();
+        orders[7].Pay();
+        
+        Console.WriteLine("=== Raw Orders ===");
+        foreach (var o in orders)
+        {
+            Console.WriteLine($"{o.Id} {o.GetType().Name} {o.Amount} {o.Status}");
+        }
+    }
+}
+```
+
+```bash
+=== Raw Orders ===
+1 OnlineOrder 2234132 Paid
+2 StoreOrder 54624 Created
+3 OnlineOrder 754523 Paid
+4 StoreOrder 3141 Paid
+5 StoreOrder 625342353 Created
+6 StoreOrder 2314454 Paid
+7 OnlineOrder 7245 Paid
+8 OnlineOrder 1653735 Paid
+```
+
+订单状态：有的 Paid，有的 Created
+
+**第二步：过滤（Where）——只拿已支付订单**
+
+现在需求：只返回已支付订单（Paid）。
+
+```c#
+class Program
+{
+    static void Main()
+    {
+
+		//创建订单列表
+ 		...
+
+        // 支付2个订单
+		...
+        
+        // 过滤（Where）——只拿已支付订单
+        var paidOrders = orders.Where(o => o.Status == OrderStatus.Paid).ToList();
+        
+        Console.WriteLine("=== Paid Orders ===");
+        
+        foreach (var o in paidOrders)
+        {
+            Console.WriteLine($"{o.Id} {o.GetType().Name} {o.Amount} {o.Status}");
+        }
+
+    }
+}
+```
+
+```bash
+=== Paid Orders ===
+1 OnlineOrder 2234132 Paid
+3 OnlineOrder 754523 Paid
+4 StoreOrder 3141 Paid
+6 StoreOrder 2314454 Paid
+7 OnlineOrder 7245 Paid
+8 OnlineOrder 1653735 Paid
+```
+
+**第三步：映射（Select）——把 Order 转成 OrderDto（返回模型）**
+
+现在需求：API 返回 `OrderDto` 列表，而不是 `Order`。
+
+```c#
+class Program
+{
+    static void Main()
+    {
+
+		//创建订单列表
+ 		...
+
+        // 支付2个订单
+		...
+        
+        // 过滤（Where）——只拿已支付订单
+		...
+
+        // 映射（Select）——把 Order 转成 OrderDto（返回模型）
+        var result = paidOrders.Select(p => new OrderDto()
+        {
+            Id = p.Id,
+            Type = p.GetType().Name,
+            Amount = p.Amount,
+            Status = p.Status
+        }).ToList();
+        
+        Console.WriteLine("=== API Result (OrderDto) ===");
+        foreach (var r in result)
+        {
+            Console.WriteLine($"{r.Id} {r.Type} {r.Amount} {r.Status}");
+        }
+
+    }
+}
+```
+
+```bash
+=== API Result (OrderDto) ===
+1 OnlineOrder 2234132 Paid
+3 OnlineOrder 754523 Paid
+4 StoreOrder 3141 Paid
+6 StoreOrder 2314454 Paid
+7 OnlineOrder 7245 Paid
+8 OnlineOrder 1653735 Paid
+```
+
+
+
+到这一步，已经做出了 Web API 最常见的“返回前处理”：
+
+> **Where（过滤） + Select（映射） + ToList（执行）**
+
+
+
+**第四步：排序（OrderBy/OrderByDescending）**
+
+现在需求：返回结果按金额从大到小排序。
+
+```c#
+class Program
+{
+    static void Main()
+    {
+
+		//创建订单列表
+ 		...
+
+        // 支付2个订单
+		...
+        
+        // 过滤（Where）——只拿已支付订单
+		...
+
+        // 映射（Select）——把 Order 转成 OrderDto（返回模型）
+        ...
+            
+		// 排序：返回结果按金额从大到小排序
+        var desOrders = result.OrderByDescending(o => o.Amount).ToList();
+        
+        Console.WriteLine("=== API Result OrderByDescending ===");
+        foreach (var r in desOrders)
+        {
+            Console.WriteLine($"{r.Id} {r.Type} {r.Amount} {r.Status}");
+        }
+    }
+}
+```
+
+```bash
+=== API Result OrderByDescending ===
+6 StoreOrder 2314454 Paid
+1 OnlineOrder 2234132 Paid
+8 OnlineOrder 1653735 Paid
+3 OnlineOrder 754523 Paid
+7 OnlineOrder 7245 Paid
+4 StoreOrder 3141 Paid
+```
+
+
+
+**第五步：统计与分组（GroupBy + Count + Sum）**
+
+现在需求：做一个简单报表（很像后台管理 API）：
+
+- 按订单类型分组（OnlineOrder / StoreOrder）
+- 统计每组的数量 Count
+- 统计每组的总金额 Sum
+
+我们先定义一个统计模型：
+
+```c#
+public class OrderReportItem
+{
+    public string Type { get; set; } = "";
+    public int Count { get; set; }
+    public decimal TotalAmount { get; set; }
+}
+```
+
+过滤 + 分组统计 LINQ操作
+
+```c#
+class Program
+{
+    static void Main()
+    {
+
+		//创建订单列表
+ 		...
+
+        // 支付2个订单
+		...
+        
+        // 过滤（Where）——只拿已支付订单
+		...
+
+        // 映射（Select）——把 Order 转成 OrderDto（返回模型）
+        ...
+            
+		// 排序：返回结果按金额从大到小排序
+        ...
+        
+        // 统计与分组（GroupBy + Count + Sum）    
+      	var report = desOrders.GroupBy(o => o.Type).Select(r => new OrderReportItem()
+        {
+            Type = r.Key, // Key就是分组的依据 （这里就是Type)
+            Count = r.Count(),
+            TotalAmount = r.Sum(x => x.Amount)
+        }).ToList();
+        
+        Console.WriteLine("=== Paid Orders Report ===");
+        foreach (var item in report)
+        {
+            Console.WriteLine($"{item.Type} | Count={item.Count} | TotalAmount={item.TotalAmount}");
+        }      
+    }
+}
+```
+
+```bash
+=== Paid Orders Report ===
+StoreOrder | Count=2 | TotalAmount=2317595
+OnlineOrder | Count=4 | TotalAmount=4649635
+```
+
+Web API 高频数据处理, 组合链条非常关键：
+
+- `Where`：过滤
+- `Select`：映射成返回模型
+- `OrderBy/OrderByDescending`：排序
+- `GroupBy` + `Count/Sum`：统计
+- `ToList`：执行并固化结果（避免延迟执行带来的意外）
+
+
+
+#### 6. 小结
+
+- LINQ 是一组对 `IEnumerable<T>` 的扩展方法（第15章）
+
+- 条件/映射通常用 lambda（第14章）
+
+- LINQ 大多是延迟执行，`ToList()` 会立刻执行并把结果固定下来
+
+- Web API 常用：Where、Select、Any、FirstOrDefault、OrderBy、GroupBy

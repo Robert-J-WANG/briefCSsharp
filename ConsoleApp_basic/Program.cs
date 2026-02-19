@@ -5,119 +5,109 @@ namespace ConsoleApp_basic;
 
 class Program
 {
-    static async Task Main()
+    static void Main()
     {
         // 使用组合+外部依赖
         var fakePaymentGateway = new FakePaymentGateway();
         
-        var asyncRepo = new AsyncRepository<Order>();
-        await asyncRepo.AddAsync(new StoreOrder(123456)); // 异步方法，等3秒执行后面的，但线程不卡
-        Console.WriteLine("3秒之后执行");
+        //创建订单列表
+        var orders = new List<Order>()
+        {
+            new OnlineOrder(2234132, fakePaymentGateway),
+            new StoreOrder(54624),
+            new OnlineOrder(754523, fakePaymentGateway),
+            new StoreOrder(3141),
+            new StoreOrder(625342353),
+            new StoreOrder(2314454),
+            new OnlineOrder(7245, fakePaymentGateway),
+            new OnlineOrder(1653735, fakePaymentGateway),
+        };
+
+        // 支付几个订单
+        orders[0].Pay();
+        orders[2].Pay();
+        orders[3].Pay();
+        orders[5].Pay();
+        orders[6].Pay();
+        orders[7].Pay();
         
-        var orders = await asyncRepo.GetAllAsync(); // 异步方法，等3秒执行后面的，但线程不卡
-        Console.WriteLine("3秒之后执行");
+        Console.WriteLine("=== Raw Orders ===");
         foreach (var o in orders)
         {
-            Console.WriteLine(o?.Amount);
+            Console.WriteLine($"{o.Id} {o.GetType().Name} {o.Amount} {o.Status}");
         }
         
-        var result =await asyncRepo.GetByIdAsync(1); // 异步方法，等3秒执行后面的，但线程不卡
-        Console.WriteLine("3秒之后执行");
-        Console.WriteLine(result.Value?.Status);
+        // 过滤（Where）——只拿已支付订单
+        var paidOrders = orders.Where(o => o.Status == OrderStatus.Paid).ToList();
+        
+        Console.WriteLine("=== Paid Orders ===");
+        foreach (var o in paidOrders)
+        {
+            Console.WriteLine($"{o.Id} {o.GetType().Name} {o.Amount} {o.Status}");
+        }
+
+        // 映射（Select）——把 Order 转成 OrderDto（返回模型）
+        var result = paidOrders.Select(p => new OrderDto()
+        {
+            Id = p.Id,
+            Type = p.GetType().Name,
+            Amount = p.Amount,
+            Status = p.Status
+        }).ToList();
+        
+        Console.WriteLine("=== API Result (OrderDto) ===");
+        foreach (var r in result)
+        {
+            Console.WriteLine($"{r.Id} {r.Type} {r.Amount} {r.Status}");
+        }
+        
+        // 排序：返回结果按金额从大到小排序
+        var desOrders = result.OrderByDescending(o => o.Amount).ToList();
+        
+        Console.WriteLine("=== API Result OrderByDescending ===");
+        foreach (var r in desOrders)
+        {
+            Console.WriteLine($"{r.Id} {r.Type} {r.Amount} {r.Status}");
+        }
+        
+        
+        // 统计与分组（GroupBy + Count + Sum）
+
+        var report = desOrders.GroupBy(o => o.Type).Select(r => new OrderReportItem()
+        {
+            Type = r.Key, // Key就是分组的依据 （这里就是Type)
+            Count = r.Count(),
+            TotalAmount = r.Sum(x => x.Amount)
+        }).ToList();
+        
+        Console.WriteLine("=== Paid Orders Report ===");
+        foreach (var item in report)
+        {
+            Console.WriteLine($"{item.Type} | Count={item.Count} | TotalAmount={item.TotalAmount}");
+        }
+        
 
         /*
-        var slowRepo = new SlowSyncRepository<Order>();
-        slowRepo.Add(new StoreOrder(123456)); // 同步方法，卡3秒之后后面的
-        Console.WriteLine("3秒之后执行");
-        
-        var orders = slowRepo.GetAll(); // 同步方法，卡3秒之后后面的
-        Console.WriteLine("3秒之后执行");
+        // 过滤筛选已经支付的订单金额
+        var payAmounts = new List<decimal>();
         foreach (var o in orders)
         {
-            Console.WriteLine(o.Amount);
-        }
-
-        var result = slowRepo.GetById(1); // 同步方法，卡3秒之后后面的
-        Console.WriteLine("3秒之后执行");
-        Console.WriteLine(result.Value?.Status);
-        */
-
-        /*
-        var nRepo = new Repository<Order>();
-        nRepo.Add(new OnlineOrder(999, fakePaymentGateway));
-        nRepo.Add(new OnlineOrder(888, fakePaymentGateway));
-        var res=nRepo.GetById(1);
-        Console.WriteLine(res.IsSuccess);
-        Console.WriteLine(res.Value?.Amount);
-        */
-
-        /*
-        var order = new StoreOrder(123);
-        var orderDto = order.Map(o => new OrderDto()
-        {
-            Amount = o.Amount,
-            Status = o.Status,
-            Type = o.GetType().Name
-        });
-
-        Console.WriteLine($"{orderDto.Type} - {orderDto.Amount} - {orderDto.Status}");
-
-        // 不限类型使用，使用委托回调，自定义逻辑
-        int[] arr = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-        var result = arr.Map(a =>
-        {
-            string str = "";
-            foreach (var i in a)
+            if (o.Status == OrderStatus.Paid)
             {
-                str += i;
+                payAmounts.Add(o.Amount);
             }
-
-            return str;
-        });
-
-        Console.WriteLine(result);
-
-
-        // var order = new StoreOrder(123);
-        // var orderDto= order.Map();
-        // Console.WriteLine($"{orderDto.Type} - {orderDto.Amount} - {orderDto.Status}");
-        */
-
-        /*
-        // 存储Order
-        var orderRepo = new Repository<Order>();
-        orderRepo.Add(new OnlineOrder(123,fakePaymentGateway));
-        orderRepo.Add(new StoreOrder(456).PayNow());
-        var orders=orderRepo.GetAll();
-        foreach (var order in orders)
-        {
-            Console.WriteLine($"order Amount: {order?.Amount}, Status: {order?.Status}");
-        }
-
-        // 也可以存储其他类型： 比如Invoice
-        var invoiceRepo = new Repository<Invoice>();
-        invoiceRepo.Add(new Invoice("abc-123",2000));
-        invoiceRepo.Add(new Invoice("efg-345",4000));
-        var invoices=invoiceRepo.GetAll();
-        foreach (var invoice in invoices)
-        {
-            Console.WriteLine($"invoice N0: {invoice.InvoiceNo} Amount: {invoice?.Amount}, Status: {invoice?.IsPaid}");
         }
         */
 
         /*
-        var repo = new OrderRepository();
+        // ✅ LINQ：Where + Select + ToList
+        var payAmounts = orders.Where(o => o.Status == OrderStatus.Paid).Select(o => o.Amount).ToList();
 
-        repo.Add(new OnlineOrder(123, fakePaymentGateway));
-        repo.Add(new StoreOrder(456).PayNow());
-
-        var order = repo.GetById(1);
-        Console.WriteLine($"my order Id: {order?.Id}, Amount: {order?.Amount}, Status: {order?.Status}");
-
-        var orders = repo.GetAll();
-        foreach (var o in orders)
+        // 循环打印出已经支付的金额
+        Console.WriteLine("Paid amounts:");
+        foreach (var amount in payAmounts)
         {
-            Console.WriteLine($"order Id: {o.Id}, Amount: {o.Amount}, Status: {o.Status}");
+            Console.WriteLine(amount);
         }
         */
     }

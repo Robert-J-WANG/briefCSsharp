@@ -4164,12 +4164,272 @@ class Program
 
 #### 7. 小结
 
-DI）完整内容包括：
+DI完整内容包括：
 
 1. ✅ **为什么不要在类里 new 依赖**（难替换、难测试、耦合高）
+
 2. ✅ **构造器注入**（DI 最常用方式）
+
 3. ✅ **接口 + 实现**（依赖倒置，替换 Fake/Real）
+
 4. ✅ **容器的作用**（自动创建依赖链）
+
 5. ✅ **生命周期**（Transient vs Singleton；状态共享与否）
+
 6. ✅ **组合根**（注册和装配集中在一个地方）- main方法中，框架的话会在其他地方
+
 7. ✅ **领域对象 vs 服务对象**（Order 通常手动创建，服务交给容器）
+
+    
+
+### 20. HTTP 基础
+
+把“在 Console 里调用一个方法”转换成“客户端发 HTTP 请求调用一个 API”。
+
+并且知道：该用哪个 HTTP 方法、路由怎么设计、参数放哪里、返回什么状态码。
+
+#### 1. Console 方法调用 vs HTTP 调用
+
+Console 里你现在是这样用的
+
+```c#
+service.PayOrder(orderId);
+```
+
+Web API 里等价的是
+
+客户端发请求：
+
+- **方法**：POST
+- **路径**：`/orders/{id}/pay`
+
+也就是：
+
+```
+POST /orders/123/pay
+```
+
+服务器收到请求后，在内部执行：
+
+```
+service.PayOrder(123);
+```
+
+✅建立的映射：
+
+> **HTTP 请求 = 远程方法调用的一种协议化表达**
+
+#### 2. HTTP 是什么
+
+HTTP 是客户端和服务器之间“请求/响应”的通信协议。
+
+ 一次交互包含：
+
+- Request（请求）：方法、路径、头、可选的 body
+
+- Response（响应）：状态码、头、可选的 body
+
+#### 3. HTTP 方法（Methods）
+
+Web API 最常用 5 个:
+
+- **GET**：获取资源（读）
+
+- **POST**：创建资源 或 触发动作（通常非幂等）
+
+- **PUT**：整体替换一个资源（幂等）
+
+- **PATCH**：部分更新（通常幂等，但看实现）
+
+- **DELETE**：删除资源（幂等）
+
+假设资源是 orders：
+
+- 获取所有订单：`GET /orders`
+- 获取某个订单：`GET /orders/{id}`
+- 创建订单：`POST /orders`
+- 更新订单（整体）：`PUT /orders/{id}`
+- 更新订单（部分）：`PATCH /orders/{id}`
+- 删除订单：`DELETE /orders/{id}`
+
+#### 4. URL / 路由（Route）路径怎么设计才清晰？
+
+资源导向的基本规则:
+
+- 用名词复数：`/orders`
+- 用层级表达关系：`/orders/{id}`
+- 动作通常作为子路径：`/orders/{id}/pay`
+
+路由参数（Route Parameter）
+
+`{id}` 这种就是路由参数，表示“某个特定订单”。
+
+```c#
+GET /orders/123
+POST /orders/123/pay
+```
+
+在服务器内部，`id` 会被解析成 `123` 传给业务方法。
+
+#### 5. **参数放哪？Route vs Query vs Body**
+
+三类参数位置的适用场景:
+
+- **Route（路径参数）**：定位某个资源
+
+    `/orders/{id}` → id 用来“定位订单”
+
+- **Query（查询字符串）**：过滤/排序/分页（可选条件）
+
+    `/orders?status=Paid&page=2&pageSize=20`
+
+- **Body（请求体）**：提交数据（创建/更新的内容）
+
+    ```
+    `POST /orders` body: `{ "amount": 100, "type": "Online" }`
+    ```
+
+Order 例子三个典型请求
+
+(1) 获取已支付订单（过滤）
+
+```c#
+GET /orders?status=Paid
+```
+
+(2) 创建订单（提交数据）
+
+```c#
+POST /orders
+Content-Type: application/json
+
+{ "amount": 100, "type": "Online" }
+```
+
+(3) 支付某订单（定位资源 + 动作）
+
+```c#
+POST /orders/123/pay
+```
+
+#### 6. Body 与 JSON：请求/响应体里通常放什么？
+
+在 Web API 里，Body 通常是 JSON。
+
+- 请求 DTO
+
+    比如创建订单的请求：
+
+    ```c#
+    { "amount": 100, "type": "Online" }
+    ```
+
+    会用 `OrderCreateRequest` 类来接
+
+- 响应 DTO
+
+    比如查询订单返回：
+
+    ```c#
+    { "id": 123, "type": "OnlineOrder", "amount": 100, "status": "Paid" }
+    ```
+
+    用 `OrderResponse` 输出，而不是直接输出 `Order`（避免暴露内部细节）
+
+#### 7. 状态码（Status Code）：API 成败怎么表达？
+
+HTTP 状态码是“响应的第一层语义”。
+
+**2xx：成功**
+
+- **200 OK**：成功，通常带返回 body（查询/更新后返回结果）
+- **201 Created**：成功创建资源（POST /orders）
+- **204 No Content**：成功，但不返回 body（比如 DELETE 或某些更新）
+
+**4xx：客户端问题**
+
+- **400 Bad Request**：参数不合法/格式不对（amount <= 0）
+- **401 Unauthorized**：未登录（将来认证）
+- **403 Forbidden**：没权限
+- **404 Not Found**：资源不存在（orderId 找不到）
+- **409 Conflict**：冲突（比如重复支付：已 Paid 又 pay）
+
+**5xx：服务器问题**
+
+- **500 Internal Server Error**：服务器异常（未处理异常等）
+
+    
+
+以order为例，请求和响应
+
+查询单个订单
+
+- 请求：`GET /orders/{id}`
+- 成功：`200 + OrderResponse`
+- 失败：`404`（找不到）
+
+创建订单
+
+- 请求：`POST /orders` + body（amount/type）
+- 成功：`201 + OrderResponse（含新 Id）`
+- 失败：`400`（amount 不合法）
+
+支付订单（动作型）
+
+- 请求：`POST /orders/{id}/pay`
+- 成功：`200` 或 `204`
+- 失败：
+    - `404`（id 不存在）
+    - `409`（已支付还来 pay）
+
+#### 8. 幂等性（Idempotency）——为什么 DELETE/PUT 常说是幂等？
+
+幂等 = 同一个请求重复执行多次，结果应一致。
+
+比如，以order实例来说：
+
+- `GET /orders/123` 多次查询，结果不应该因为你查询而变化 → 幂等
+- `DELETE /orders/123` 删除多次：第一次删掉，后面再删应仍然是“已删除状态” → 幂等（实现上可能返回 204 或 404，但资源状态不再变化）
+- `POST /orders` 创建：发两次会创建两个订单 → 不幂等
+
+**那 `POST /orders/{id}/pay` 呢？**
+
+- 第一次 Created→Paid
+- 第二次再 pay 不应该再改变（应该返回 409 或提示已支付）
+
+所以它“业务上希望幂等”，但语义上常仍用 POST 表达“触发动作”。
+
+#### 9. 请求组成 Headers / Content-Type
+
+两个关键点：
+
+- Content-Type
+
+     如果 body 是 JSON：
+
+     `Content-Type: application/json`
+
+- **Accept**（客户端想要什么格式）
+
+    常见：`Accept: application/json`
+
+在 ASP.NET Core 里，框架会帮助解析/序列化
+
+#### 10. 小结
+
+看到一个业务方法：`PayOrder(id)`
+
+ → 能设计成：`POST /orders/{id}/pay`
+
+明白参数该放：
+
+- 定位资源：route
+- 过滤分页：query
+- 创建更新数据：body(JSON)
+
+能合理选择状态码：
+
+- 成功：200/201/204
+- 参数错误：400
+- 找不到：404
+- 状态冲突（重复支付）：409

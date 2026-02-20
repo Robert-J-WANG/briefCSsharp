@@ -3553,3 +3553,623 @@ Web API 高频数据处理, 组合链条非常关键：
 - LINQ 大多是延迟执行，`ToList()` 会立刻执行并把结果固定下来
 
 - Web API 常用：Where、Select、Any、FirstOrDefault、OrderBy、GroupBy
+
+
+
+### 19. 依赖注入 DI
+
+#### 1. 什么问题？
+
+把外部依赖写死在类里（`new`）会让代码很难改、很难测。
+
+比如下面常见的错误写法：
+
+假设 `OnlineOrder` 需要调用支付网关：
+
+```c#
+public interface IPaymentGateway
+{
+    void Charge(decimal amount);
+}
+
+public class RealPaymentGateway : IPaymentGateway
+{
+    public void Charge(decimal amount)
+        => Console.WriteLine($"[RealGateway] Charged {amount}");
+}
+```
+
+很多新手会在 `OnlineOrder` 内部直接 `new`：
+
+```c#
+public class OnlineOrder : Order
+{
+    private IPaymentGateway _gateway = new RealPaymentGateway(); // ❌ 写死依赖
+    public OnlineOrder(decimal amount) : base(amount){}
+
+    public override void Pay()
+    {
+        EnsureCanPay();
+        _gateway.Charge(_amount);
+        _status = OrderStatus.Paid;
+        HandlePaymentSucceeded();
+    }
+    
+}
+```
+
+会导致什么问题？
+
+1. **不可替换**：想换成 Stripe/Mock/Fake，要改 OnlineOrder 源码
+2. **难测试**：单元测试时不想真的扣款/发网络请求
+3. **职责混乱**：OnlineOrder 既做业务，又负责“怎么创建网关对象”
+
+因此，**类里面尽量不要 new 外部依赖**。应该把依赖从外部注入使用。
+
+#### 2. 依赖注入（DI）
+
+DI：依赖不要在类里创建，而是由外部提供（注入）给类使用。在 C# 最常见的注入方式是：**构造器注入**。
+
+改造 OnlineOrder：构造器接收依赖（✅现有写法就是这个）
+
+```c#
+public class OnlineOrder : Order
+{
+    private IPaymentGateway _gateway;
+    // 构造器注入依赖
+    public OnlineOrder(decimal amount,IPaymentGateway gateway) : base(amount)
+    {
+        _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
+    }
+    public override void Pay()
+    {
+        EnsureCanPay();
+        _gateway.Charge(_amount);
+        HandlePaymentSucceeded();
+    } 
+}
+```
+
+在 Main 里选择注入哪个实现（关键）
+
+```c#
+IPaymentGateway gateway = new RealPaymentGateway();
+// 测试时可以换：IPaymentGateway gateway = new FakePaymentGateway();
+
+var order = new OnlineOrder(100, gateway);
+order.Pay();
+```
+
+我们已经实现了一个简单的依赖注入（DI）：
+
+- OnlineOrder 内部不关心用哪个具体的网关
+- 外部决定注入什么实现
+
+现在我们注入一次测试网关，测试需要 Fake:
+
+- 不真的扣款
+- 还能验证“Charge 被调用了”
+
+```c#
+public class FakePaymentGateway : IPaymentGateway
+{
+    public decimal LastChargedAmount { get; private set; }
+    public int CallCount { get; private set; }
+
+    public void Charge(decimal amount)
+    {
+        CallCount++;
+        LastChargedAmount = amount;
+        Console.WriteLine($"[FakeGateway] Pretend charge {amount}");
+    }
+}
+```
+
+用 Fake 进行“可验证”的测试式演示
+
+```c#
+class Program
+{
+    static void Main()
+    {
+        // 实例外部依赖
+        var gateway = new RealPaymentGateway();
+
+        var order = new OnlineOrder(666, gateway);
+        order.Pay();
+        
+        // 实例外部依赖
+        var fake = new FakePaymentGateway();
+        var order2 = new OnlineOrder(434, fake);
+        order2.Pay();
+        
+        Console.WriteLine(fake.CallCount);         // 1
+        Console.WriteLine(fake.LastChargedAmount); // 100
+
+    }
+}
+```
+
+**有什么问题？**
+
+依赖不只一个时，构造器参数会变多。以后可能还要注入：
+
+- `IRepository<Order>`（存取订单）
+- `IOrderNotifier`（发通知/日志）
+- `IPaymentGateway`（支付）
+
+那构造器会很多参数，会不会很麻烦？因此我们把业务流程抽象出去
+
+
+
+#### 3. 把“业务流程”抽到 OrderService，并对它也使用构造器注入
+
+web API 里常见结构是：Controller/Endpoint → Service → Repository.
+
+~~我们现在在 Console 里先做 Service（不进框架）。~~
+
+**创建OrderService：注入仓储（DI）**
+
+OrderService 负责“按 id 找订单 → Pay”：
+
+```c#
+public class OrderService
+{
+    private readonly Repository<Order> _repo;
+    public OrderService(Repository<Order> repo)
+    {
+        _repo = repo??throw new ArgumentNullException(nameof(repo));
+    }
+
+    public void PayOrder(int id)
+    {
+        var order = _repo.GetById(id).Value;
+        if(order == null) throw new InvalidOperationException("Order not found");
+        order.Pay();
+    }
+}
+```
+
+Main 里手动装配（手动 DI）
+
+```c#
+class Program
+{
+    static void Main()
+    {
+        // 实例外部依赖
+        var gateway = new RealPaymentGateway();
+
+        var onlineOrder = new OnlineOrder(666, gateway).AddSuccessHandlers(o => Console.WriteLine($"[SendEmail] Paid: {o.Id} {o.Amount}"));
+        
+        var repo=new Repository<Order>();
+        repo.Add(onlineOrder);
+
+        var orderService = new OrderService(repo);
+        orderService.PayOrder(onlineOrder.Id);
+    }
+}
+```
+
+这里可以看到：
+
+- Service 不依赖具体仓储实现（可替换）
+- OnlineOrder 不依赖具体网关实现（可替换）
+
+DI 让整个系统“可插拔”
+
+#### 4. 支付通知抽成接口，再注入（DI ）
+
+支付之后的通知，现在的操作是：
+
+- 要么通过之前封装的扩展方法`AddSuccessHandlers` 委托自定义输入（如上面的情况）
+
+- 要么在OrderService里PayOrder方法里写，类似：
+
+    ```c#
+    Console.WriteLine($"[SendEmail] Paid: {o.Id} {o.Amount}")
+    ```
+
+但是，这样会写死，无法实现替换。
+
+因此，把支付通知的逻辑也进行封装，再注入（DI ）
+
+定义通知接口
+
+```c#
+public interface IOrderNotifier
+{
+    void NotifyPaid(Order order);
+}
+```
+
+定义一个邮件通知类
+
+```c#
+public class OrderEmailNotifier: IOrderNotifier
+{
+    public void NotifyPaid(Order order)
+        => Console.WriteLine($"[SendEmail] Order {order.Id} paid, amount={order.Amount}");
+}
+```
+
+DI注入通知到OrderService中
+
+```c#
+public class OrderService
+{
+    private readonly Repository<Order> _repo;
+    private readonly OrderEmailNotifier _emailNotifier;
+    
+    //依赖注入支付通知
+    public OrderService(Repository<Order> repo,  OrderEmailNotifier emailNotifier)
+    {
+        _repo = repo??throw new ArgumentNullException(nameof(repo));
+        _emailNotifier = emailNotifier ?? throw new ArgumentNullException(nameof(emailNotifier));
+    }
+
+    public void PayOrder(int id)
+    {
+        var order = _repo.GetById(id).Value;
+        if(order == null) throw new InvalidOperationException("Order not found");
+        order.Pay();
+        // 支付通知
+        _emailNotifier.NotifyPaid(order);
+    }
+}
+```
+
+```c#
+namespace ConsoleApp_basic;
+
+public class OrderService
+{
+    private readonly Repository<Order> _repo;
+    private readonly OrderEmailNotifier _emailNotifier;
+    
+    //依赖注入支付通知
+    public OrderService(Repository<Order> repo,  OrderEmailNotifier emailNotifier)
+    {
+        _repo = repo??throw new ArgumentNullException(nameof(repo));
+        _emailNotifier = emailNotifier ?? throw new ArgumentNullException(nameof(emailNotifier));
+    }
+
+    public void PayOrder(int id)
+    {
+        var order = _repo.GetById(id).Value;
+        if(order == null) throw new InvalidOperationException("Order not found");
+        order.Pay();
+        // 支付通知
+        _emailNotifier.NotifyPaid(order);
+    }
+}
+```
+
+Main 中进行装配
+
+```c#
+class Program
+{
+    static void Main()
+    {
+        var gateway = new RealPaymentGateway();
+        var onlineOrder = new OnlineOrder(666, gateway);
+        var repo = new Repository<Order>();
+        repo.Add(onlineOrder);
+
+        var emailNotifier = new OrderEmailNotifier();
+        var orderService = new OrderService(repo, emailNotifier);
+        orderService.PayOrder(onlineOrder.Id);
+    }
+}
+```
+
+这样，所以的外部逻辑（网关，通知），业务逻辑（支付，仓库等等）都实现了抽象封装。再通过依赖注入（目前通过构造器）的方式实现组装，也可以自由替换：
+
+- DI 是什么：**依赖由外部提供，而不是类内部 new**
+
+- 最常用方式：**构造器注入**
+
+- 依赖为什么用接口：**可替换、可测试、低耦合**
+
+- DI 解决什么：**改实现不改业务；测试不用真依赖**
+
+**问题是什么？**
+
+手动装配越来越烦，如上面的main方法里所示。当依赖变多（Logger、Config、EmailSender…），Main 会变成“装配工厂”。
+
+而且**到处 new** 容易出现：
+
+- 同一种依赖被 new 多次（浪费/状态不一致）
+- 很难统一替换实现（比如从 Fake 换 Real）
+
+因此，我们需要一个东西来负责。
+
+#### 5. 容器
+
+- DI 容器（Container）
+
+    DI 容器是一个工具，用来管理应用程序中的依赖关系。 负责：
+
+    - 记录：某个接口对应哪个实现
+
+    - 创建对象时：自动把它需要的依赖也创建出来
+
+    - 管理生命周期：单例/每次新建/作用域
+
+        
+
+- 容器工作流程
+
+    c#的框架中已经内置了容器，容器主要做三件事：**注册、解析、释放**。
+
+    - **注册 (Register)**：`接口 -> 实现` 的映射
+
+        告诉容器：“如果有人找 `IOrderService`，就给它 `OrderService` 实例
+
+    - **解析 (Resolve)**：自动把这个对象构造器需要的依赖也一并创建出来（递归创建依赖树）
+
+        当代码需要一个对象时，不需要 `new`，而是向容器要。容器会自动分析这个对象需要哪些“零件”，并把它们组装好交给你
+
+    - **释放 (Dispose)**：管理**生命周期**（Singleton/Transient/Scoped）
+
+        当对象不再需要时，容器负责把它销毁（比如关闭数据库连接）
+
+        
+
+- 生命周期管理
+
+    可以定义对象的“寿命”
+
+    | **生命周期 (Lifetime)** | **描述**                             | **场景举例**                |
+    | ----------------------- | ------------------------------------ | --------------------------- |
+    | **Transient (瞬态)**    | 每次请求都要一个新的。               | 轻量级的工具类。            |
+    | **Scoped (范围)**       | 在同一个 HTTP 请求内共享同一个实例。 | 数据库上下文（DbContext）。 |
+    | **Singleton (单例)**    | 整个应用程序运行期间只创建一个。     | 配置信息、缓存。            |
+
+    一个极简容器的实现
+
+    先定义生命周期枚举
+
+    `Transient`：每次 Resolve 都创建一个新对象
+
+    `Singleton`：整个容器里只创建一次，后面复用同一个实例
+
+    ```c#
+    public enum Lifetime
+    {
+        Transient,  // 每次 Resolve 都 new
+        Singleton   // 全局只 new 一次
+    }
+    ```
+
+    
+
+#### 6. 极简容器的实现
+
+容器要能实现注册（建立接口和类的映射关系），解析（根据请求和映射关系，生成具体的实例）
+
+因此，我们的容器内部要实现的方法**（都是泛型）**：
+
+**注册“接口/抽象类型”到“实现类型”  - Register<TService, TImpl>(lifetime)**
+
+参数：
+
+- `TService`：服务类型（通常是接口，例如 `IOrderNotifier`）
+- `TImpl`：实现类型（通常是 class，例如 `ConsoleOrderNotifier`）
+- `lifetime`：生命周期（Transient/Singleton）
+
+返回值：
+
+- 一般是 `void`（注册动作，不需要返回对象）
+
+例子：`Register<IOrderNotifier, ConsoleOrderNotifier>()`
+
+意思：以后我需要 `IOrderNotifier` 时，就创建 `ConsoleOrderNotifier`
+
+**注册“一个已经存在的实例” - RegisterInstance<TService>(instance)**
+
+参数：
+
+- `TService`：服务类型（接口或具体类型）
+- `instance`：你手里现成的对象实例
+
+返回值：
+
+- `void`
+
+例子：配置对象、常量服务、已经 new 好的连接等
+
+**向容器要一个对象（入口）- Resolve<TService>()**
+
+例子：`var service = Resolve<OrderService>();`
+
+容器内部会：
+
+- 找到 `TService` 对应的实现类型
+- 选择构造器
+- 把构造器参数一个一个 Resolve 出来
+- 最后 new 出 `TService` 的实例返回
+
+**定义生命周期枚举**
+
+- `Transient`：每次 Resolve 都创建一个新对象
+
+- `Singleton`：整个容器里只创建一次，后面复用同一个实例
+
+**容器内部需要保存什么信息？（Registration）**
+
+每次 Register 时，容器必须记住：
+
+- `ServiceType`：你请求的类型（接口）
+- `ImplType`：要创建的实现类型
+- `Lifetime`：生命周期
+- `SingletonInstance`：如果是单例，要缓存创建出来的对象
+- `Instance`：如果是 RegisterInstance，直接存现成对象
+
+
+
+**容器代码的实现：**(看懂都行)
+
+```c#
+
+public enum Lifetime
+{
+    Transient,
+    Singleton
+}
+
+public class SimpleContainer
+{
+    private class Registration
+    {
+        public Type ServiceType { get; init; } = default!;
+        public Type? ImplType { get; init; }
+        public Lifetime Lifetime { get; init; }
+
+        public object? SingletonInstance { get; set; }
+        public object? Instance { get; init; }
+    }
+
+    private readonly Dictionary<Type, Registration> _map = new();
+
+    // 1) 注册：接口/抽象 → 实现
+    public void Register<TService, TImpl>(Lifetime lifetime = Lifetime.Transient)
+        where TImpl : TService
+    {
+        _map[typeof(TService)] = new Registration
+        {
+            ServiceType = typeof(TService),
+            ImplType = typeof(TImpl),
+            Lifetime = lifetime
+        };
+    }
+
+    // 2) 注册：现成实例
+    public void RegisterInstance<TService>(TService instance)
+    {
+        if (instance == null) throw new ArgumentNullException(nameof(instance));
+
+        _map[typeof(TService)] = new Registration
+        {
+            ServiceType = typeof(TService),
+            Instance = instance!,
+            Lifetime = Lifetime.Singleton,
+            SingletonInstance = instance!
+        };
+    }
+
+    // 3) 解析：对外入口（泛型版本）
+    public TService Resolve<TService>()
+        => (TService)Resolve(typeof(TService));
+
+    // 解析：内部统一入口（非泛型）
+    private object Resolve(Type serviceType)
+    {
+        // 如果没有注册
+        if (!_map.TryGetValue(serviceType, out var reg))
+        {
+            // 允许“具体类”不注册也能被创建（容器直接 new 它）
+            // 但接口/抽象类必须注册，否则无法 new
+            if (serviceType.IsInterface || serviceType.IsAbstract)
+                throw new InvalidOperationException($"Type not registered: {serviceType.FullName}");
+
+            return Create(serviceType);
+        }
+
+        // 如果是 RegisterInstance：直接返回
+        if (reg.Instance != null)
+            return reg.Instance;
+
+        // 如果是 Singleton：有缓存就返回，没有就创建并缓存
+        if (reg.Lifetime == Lifetime.Singleton)
+        {
+            if (reg.SingletonInstance != null)
+                return reg.SingletonInstance;
+
+            reg.SingletonInstance = Create(reg.ImplType!);
+            return reg.SingletonInstance;
+        }
+
+        // Transient：每次都创建新对象
+        return Create(reg.ImplType!);
+    }
+
+    // 创建对象：核心逻辑——找构造器 + 解析参数 + Activator new
+    private object Create(Type implType)
+    {
+        // 选一个构造器策略：这里选“参数最多的构造器”
+        // 原因：通常依赖会放在构造器参数里，参数最多意味着依赖最完整
+        var ctor = implType.GetConstructors()
+            .OrderByDescending(c => c.GetParameters().Length)
+            .FirstOrDefault();
+
+        if (ctor == null)
+            throw new InvalidOperationException($"No public constructor found for {implType.FullName}");
+
+        // 对构造器每个参数进行 Resolve（递归构建依赖树）
+        var parameters = ctor.GetParameters();
+        var args = new object[parameters.Length];
+
+        for (int i = 0; i < parameters.Length; i++)
+        {
+            args[i] = Resolve(parameters[i].ParameterType);
+        }
+
+        // 真正创建对象
+        return Activator.CreateInstance(implType, args)
+               ?? throw new InvalidOperationException($"Failed to create instance of {implType.FullName}");
+    }
+}
+
+```
+
+**容器的使用**
+
+- `OrderService` 依赖 `IRepository<Order>` 和 `IOrderNotifier`
+- Repository/Notifier 是实现类
+
+```c#
+class Program
+{
+    static void Main()
+    {
+        var c = new SimpleContainer();
+        
+        // 注册网关
+        c.Register<IPaymentGateway,RealPaymentGateway>();
+
+        // 关键：Repository<Order> 要共享同一个实例（否则内存数据不共享）
+        c.Register<Repository<Order>, Repository<Order>>(Lifetime.Singleton);
+
+        // 可选：Notifier 不注册也能创建；注册只是为了显式
+        c.Register<OrderEmailNotifier, OrderEmailNotifier>(Lifetime.Transient);
+
+        // OrderService 可选注册；不注册也能创建（具体类）
+        c.Register<OrderService, OrderService>(Lifetime.Transient);
+
+        // Order 是运行时数据（amount），仍然手动创建
+        var gateway = c.Resolve<IPaymentGateway>();
+        var onlineOrder = new OnlineOrder(666, gateway);
+
+        var repo = c.Resolve<Repository<Order>>();
+        repo.Add(onlineOrder);
+
+        // 这里容器会自动注入：Repository<Order> + OrderEmailNotifier
+        var orderService = c.Resolve<OrderService>();
+        orderService.PayOrder(onlineOrder.Id);
+    }
+}
+```
+
+#### 7. 小结
+
+DI）完整内容包括：
+
+1. ✅ **为什么不要在类里 new 依赖**（难替换、难测试、耦合高）
+2. ✅ **构造器注入**（DI 最常用方式）
+3. ✅ **接口 + 实现**（依赖倒置，替换 Fake/Real）
+4. ✅ **容器的作用**（自动创建依赖链）
+5. ✅ **生命周期**（Transient vs Singleton；状态共享与否）
+6. ✅ **组合根**（注册和装配集中在一个地方）- main方法中，框架的话会在其他地方
+7. ✅ **领域对象 vs 服务对象**（Order 通常手动创建，服务交给容器）

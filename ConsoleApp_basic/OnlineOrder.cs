@@ -16,6 +16,7 @@ public class OnlineOrder : Order
         // 继承父类
         EnsureCanPay();
         // Console.WriteLine($"[Online] Calling payment gateway, amount={_amount}");
+        
         // 外部依赖的变化点，交给 gateway 处理
         _gateway.Charge(_amount);
         _status = OrderStatus.Paid;
